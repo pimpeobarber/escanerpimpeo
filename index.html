@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escáner Pro - Pimpeo Barber</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        :root {
+            --primary: #ff0000; /* Rojo Pimpeo */
+            --bg: #000000; /* Fondo Negro */
+            --card-bg: #0a0a0a; /* Negro tarjeta */
+            --text: #ffffff;
+            --border: #330000; /* Borde rojo oscuro */
+        }
+
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background-color: var(--bg); 
+            color: var(--text); 
+            text-align: center; 
+            margin: 0; 
+            padding: 20px; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .card { 
+            background-color: var(--card-bg); 
+            padding: 25px; 
+            border-radius: 20px; 
+            border: 1px solid var(--border); 
+            width: 100%;
+            max-width: 400px; 
+            box-shadow: 0 10px 30px rgba(255, 0, 0, 0.15); 
+        }
+
+        h1 { 
+            color: var(--primary); 
+            text-transform: uppercase; 
+            letter-spacing: 3px; 
+            margin: 0 0 5px 0; 
+            font-size: 1.6rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .sub-titulo {
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 0.8rem;
+            margin-bottom: 25px;
+        }
+        
+        /* Estilos de la Zona de Cámara */
+        #reader { 
+            width: 100%; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            border: 2px solid var(--border) !important; 
+            background-color: #000;
+        }
+
+        /* Estilo para los botones internos de la librería (si aparecen) */
+        #reader button {
+            background-color: #111;
+            color: white;
+            border: 1px solid #333;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+
+        /* Estilos del Mensaje de Resultado */
+        #mensaje { 
+            margin-top: 25px; 
+            font-size: 1em; 
+            line-height: 1.5; 
+            min-height: 50px; 
+            padding: 15px; 
+            border-radius: 10px; 
+            border: 1px solid transparent;
+        }
+
+        /* Clases para Éxito y Error */
+        .msg-espera {
+            background-color: #111;
+            color: #666;
+            border-color: #222;
+        }
+
+        .msg-exito { 
+            background-color: rgba(0, 255, 0, 0.05); 
+            border-color: #00ff00; 
+            color: #00ff00; 
+            font-weight: bold;
+        }
+
+        .msg-error { 
+            background-color: rgba(255, 0, 0, 0.1); 
+            border-color: var(--primary); 
+            color: #ff3333; 
+            font-weight: bold;
+        }
+
+        /* Botón Siguiente */
+        .btn-nuevo { 
+            background: linear-gradient(135deg, var(--primary) 0%, #a00000 100%);
+            color: white; 
+            border: none; 
+            padding: 15px; 
+            width: 100%; 
+            border-radius: 10px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            margin-top: 15px; 
+            text-transform: uppercase;
+            font-size: 14px;
+            transition: 0.3s;
+            box-shadow: 0 4px 10px rgba(255,0,0,0.3);
+            display: none; /* Oculto inicialmente */
+        }
+        
+        .btn-nuevo:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(255,0,0,0.4);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Pimpeo Barber</h1>
+        <div class="sub-titulo">Escáner del Barbero</div>
+        
+        <div id="reader"></div>
+        
+        <div id="mensaje" class="msg-espera">Esperando código del cliente...</div>
+        
+        <button class="btn-nuevo" onclick="location.reload()" id="btn-nuevo">Siguiente Cliente ✂️</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, updateDoc, increment, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // Tus credenciales actualizadas
+        const firebaseConfig = {
+            apiKey: "AIzaSyBmIHUrJQN2Pav2vQCkLmX-FpnlfB0A2PM",
+            authDomain: "mibarberia-8e78d.firebaseapp.com",
+            projectId: "mibarberia-8e78d",
+            storageBucket: "mibarberia-8e78d.firebasestorage.app",
+            messagingSenderId: "797426485956",
+            appId: "1:797426485956:web:0dcb99fcdf708abe4dd791"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // CONFIGURACIÓN DEL ESCÁNER
+        const scanner = new Html5QrcodeScanner("reader", { 
+            fps: 15, 
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0,
+            showTorchButtonIfSupported: true // Lupa si el cel lo soporta
+        });
+        
+        scanner.render(async (decodedText) => {
+            const msgDiv = document.getElementById("mensaje");
+            // Detener la cámara para procesar
+            scanner.clear();
+
+            try {
+                // Buscamos al cliente en la colección 'clientes' usando el ID leído
+                const clienteRef = doc(db, "clientes", decodedText);
+                const snap = await getDoc(clienteRef);
+
+                if (snap.exists()) {
+                    // SUMAR EL PUNTO Y ACTUALIZAR FECHA
+                    await updateDoc(clienteRef, {
+                        puntos: increment(1),
+                        ultimaVisita: serverTimestamp()
+                    });
+
+                    const datos = snap.data();
+                    const puntosNuevos = (datos.puntos || 0) + 1;
+
+                    msgDiv.className = "msg-exito";
+                    msgDiv.innerHTML = `<strong>✅ ¡Punto Sumado!</strong><br>
+                                        Cliente: ${datos.nombre.toUpperCase()}<br>
+                                        Total: ${puntosNuevos} puntos.`;
+
+                    // Alerta de premio si llega a 10
+                    if (puntosNuevos >= 10) {
+                        msgDiv.innerHTML += `<br><br><span style="background:var(--primary); color:white; padding:2px 5px; border-radius:3px;">🎁 REGALO DISPONIBLE</span>`;
+                    }
+                } else {
+                    msgDiv.className = "msg-error";
+                    msgDiv.innerHTML = `<strong>❌ Error: Cliente No Encontrado</strong><br>ID: ${decodedText}`;
+                }
+            } catch (e) {
+                console.error(e);
+                msgDiv.className = "msg-error";
+                msgDiv.innerText = "Error de conexión con la base de datos.";
+            }
+
+            // Mostrar botón para escanear el siguiente
+            document.getElementById("btn-nuevo").style.display = "block";
+        });
+    </script>
+</body>
+</html>
